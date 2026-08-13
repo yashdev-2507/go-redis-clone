@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strconv"
+	"time"
 )
 
 func SEThandler(args []string, store map[string]*Value) string {
@@ -17,7 +18,7 @@ func GEThandler(args []string, store map[string]*Value) string {
 	if len(args) != 2 {
 		return "-ERR wrong number of arguments for 'get' command\r\n"
 	}
-	value, ok := store[args[1]]
+	value, ok := getIfNotExpired(store, args[1])
 	if !ok {
 		return "$-1\r\n"
 	}
@@ -25,14 +26,13 @@ func GEThandler(args []string, store map[string]*Value) string {
 		return "-WRONGTYPE Operation agianst a key holding the wrong kind of value\r\n"
 	}
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(value.Str), value.Str)
-
 }
 
 func LPUSHhandler(args []string, store map[string]*Value) string {
 	if len(args) < 3 {
 		return "-ERR wrong number of arguments for 'LPUSH' command\r\n"
 	}
-	value, ok := store[args[1]]
+	value, ok := getIfNotExpired(store, args[1])
 	if !ok {
 		value = &Value{Type: "list", List: &LinkedList{}}
 		store[args[1]] = value
@@ -53,7 +53,7 @@ func RPUSHhandler(args []string, store map[string]*Value) string {
 	if len(args) < 3 {
 		return "-ERR wrong number of arguments for rpush command\r\n"
 	}
-	value, ok := store[args[1]]
+	value, ok := getIfNotExpired(store, args[1])
 	if !ok {
 		value = &Value{Type: "list", List: &LinkedList{}}
 		store[args[1]] = value
@@ -73,7 +73,7 @@ func RPOPhandler(args []string, store map[string]*Value) string {
 	if len(args) != 2 {
 		return "-ERR wrong number of arguments for 'RPOP' command\r\n"
 	}
-	value, ok := store[args[1]]
+	value, ok := getIfNotExpired(store, args[1])
 	if !ok {
 		return "$-1\r\n"
 	}
@@ -94,7 +94,7 @@ func LPOPhandler(args []string, store map[string]*Value) string {
 	if len(args) != 2 {
 		return "-ERR wrong number of arguments for 'LPOP' command\r\n"
 	}
-	value, ok := store[args[1]]
+	value, ok := getIfNotExpired(store, args[1])
 	if !ok {
 		return "$-1\r\n"
 	}
@@ -115,7 +115,7 @@ func LRANGEhandler(args []string, store map[string]*Value) string {
 	if len(args) != 4 {
 		return "-ERR wrong number of arguments for 'LRANGE' command\r\n"
 	}
-	value, ok := store[args[1]]
+	value, ok := getIfNotExpired(store, args[1])
 	if !ok {
 		return "*0\r\n"
 	}
@@ -140,6 +140,34 @@ func LRANGEhandler(args []string, store map[string]*Value) string {
 	return result_string
 }
 
+func EXPIREhandler(args []string, store map[string]*Value) string {
+	if len(args) != 3 {
+		return "-ERR wrong number of arguments for expire\r\n"
+	}
+	key, ok := getIfNotExpired(store, args[1])
+	if !ok {
+		return ":0\r\n"
+	}
+	seconds, err := strconv.Atoi(args[2])
+	if err != nil {
+		return "-ERR value is not an integer or out of range\r\n"
+	}
+	key.ExpiresAt = time.Now().Add(time.Duration(seconds) * time.Second)
+	return ":1\r\n"
+}
+
+func getIfNotExpired(store map[string]*Value, key string) (*Value, bool) {
+	value, ok := store[key]
+	if !ok {
+		return nil, false
+	}
+	if !value.ExpiresAt.IsZero() && time.Now().After(value.ExpiresAt) {
+		delete(store, key)
+		return nil, false
+	}
+	return value, true
+}
+
 func dispatch(args []string, store map[string]*Value) string {
 	if len(args) == 0 {
 		return "-ERR you have entered nothing\r\n"
@@ -159,6 +187,8 @@ func dispatch(args []string, store map[string]*Value) string {
 		return RPOPhandler(args, store)
 	case "lrange":
 		return LRANGEhandler(args, store)
+	case "expire":
+		return EXPIREhandler(args, store)
 	default:
 		return "-ERR wrong input\r\n"
 	}

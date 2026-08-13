@@ -1,5 +1,9 @@
 package main
 
+import (
+	"time"
+)
+
 type ListNode struct {
 	Val  string
 	Prev *ListNode
@@ -13,11 +17,12 @@ type LinkedList struct {
 }
 
 type Value struct {
-	Type string
-	Str  string
-	List *LinkedList
-	Set  map[string]struct{}
-	Hash map[string]string
+	Type      string
+	Str       string
+	List      *LinkedList
+	Set       map[string]struct{}
+	Hash      map[string]string
+	ExpiresAt time.Time
 }
 
 func (ll *LinkedList) PushFront(val string) {
