@@ -14,7 +14,7 @@ func main() {
 	}
 	defer listener.Close()
 	fmt.Println("listening on : 6379")
-	store := make(map[string]*Value)
+	store := startupShardedStore()
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -26,7 +26,7 @@ func main() {
 
 }
 
-func handleconnection(conn net.Conn, store map[string]*Value) {
+func handleconnection(conn net.Conn, store *ShardedStore) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 

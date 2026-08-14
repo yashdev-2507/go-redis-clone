@@ -1,6 +1,8 @@
 package main
 
 import (
+	"hash/fnv"
+	"sync"
 	"time"
 )
 
@@ -23,6 +25,30 @@ type Value struct {
 	Set       map[string]struct{}
 	Hash      map[string]string
 	ExpiresAt time.Time
+}
+
+type Shard struct {
+	mu   sync.RWMutex
+	data map[string]*Value
+}
+
+type ShardedStore struct {
+	shards [16]*Shard
+}
+
+func startupShardedStore() *ShardedStore {
+	s := &ShardedStore{}
+	for i := range s.shards {
+		s.shards[i] = &Shard{data: make(map[string]*Value)}
+	}
+	return s
+
+}
+
+func getShardIndex(key string) int {
+	h := fnv.New32a()
+	h.Write([]byte(key))
+	return int(h.Sum32() % 16)
 }
 
 func (ll *LinkedList) PushFront(val string) {
@@ -114,4 +140,27 @@ func (ll *LinkedList) LRange(start, stop int) []string {
 		i++
 	}
 	return result
+}
+
+func (s *ShardedStore) Get(key string) (*Value, bool) {
+	ind := getShardIndex(key)
+	s.shards[ind].mu.RLock()
+	defer s.shards[ind].mu.RUnlock()
+	value, ok := s.shards[ind].data[key]
+	return value, ok
+}
+
+func (s *ShardedStore) Delete(key string) {
+	ind := getShardIndex(key)
+	s.shards[ind].mu.Lock()
+	defer s.shards[ind].mu.Unlock()
+
+	delete(s.shards[ind].data, key)
+}
+
+func (s *ShardedStore) Set(key string, value *Value) {
+	ind := getShardIndex(key)
+	s.shards[ind].mu.Lock()
+	defer s.shards[ind].mu.Unlock()
+	s.shards[ind].data[key] = value
 }

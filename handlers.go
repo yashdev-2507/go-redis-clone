@@ -6,15 +6,15 @@ import (
 	"time"
 )
 
-func SEThandler(args []string, store map[string]*Value) string {
+func SEThandler(args []string, store *ShardedStore) string {
 	if len(args) != 3 {
 		return "-ERR wrong numbers of arguments for 'set' command\r\n"
 	}
-	store[args[1]] = &Value{Type: "string", Str: args[2]}
+	store.Set(args[1], &Value{Type: "string", Str: args[2]})
 	return "+OK\r\n"
 }
 
-func GEThandler(args []string, store map[string]*Value) string {
+func GEThandler(args []string, store *ShardedStore) string {
 	if len(args) != 2 {
 		return "-ERR wrong number of arguments for 'get' command\r\n"
 	}
@@ -28,14 +28,14 @@ func GEThandler(args []string, store map[string]*Value) string {
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(value.Str), value.Str)
 }
 
-func LPUSHhandler(args []string, store map[string]*Value) string {
+func LPUSHhandler(args []string, store *ShardedStore) string {
 	if len(args) < 3 {
 		return "-ERR wrong number of arguments for 'LPUSH' command\r\n"
 	}
 	value, ok := getIfNotExpired(store, args[1])
 	if !ok {
 		value = &Value{Type: "list", List: &LinkedList{}}
-		store[args[1]] = value
+		store.Set(args[1], value)
 
 	} else if value.Type != "list" {
 		return "-WRONGTYPE operation against a key holding the wrong kind of value\r\n"
@@ -45,18 +45,17 @@ func LPUSHhandler(args []string, store map[string]*Value) string {
 		value.List.PushFront(args[i])
 		i++
 	}
-
 	return fmt.Sprintf(":%d\r\n", value.List.Size)
 }
 
-func RPUSHhandler(args []string, store map[string]*Value) string {
+func RPUSHhandler(args []string, store *ShardedStore) string {
 	if len(args) < 3 {
 		return "-ERR wrong number of arguments for rpush command\r\n"
 	}
 	value, ok := getIfNotExpired(store, args[1])
 	if !ok {
 		value = &Value{Type: "list", List: &LinkedList{}}
-		store[args[1]] = value
+		store.Set(args[1], value)
 	} else if value.Type != "list" {
 		return "-WRONGTYPE operation against a key holding the wrong kind of value\r\n"
 	}
@@ -69,7 +68,7 @@ func RPUSHhandler(args []string, store map[string]*Value) string {
 
 }
 
-func RPOPhandler(args []string, store map[string]*Value) string {
+func RPOPhandler(args []string, store *ShardedStore) string {
 	if len(args) != 2 {
 		return "-ERR wrong number of arguments for 'RPOP' command\r\n"
 	}
@@ -85,12 +84,12 @@ func RPOPhandler(args []string, store map[string]*Value) string {
 		return "$-1\r\n"
 	}
 	if value.List.Size == 0 {
-		delete(store, args[1])
+		store.Delete(args[1])
 	}
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(val), val)
 }
 
-func LPOPhandler(args []string, store map[string]*Value) string {
+func LPOPhandler(args []string, store *ShardedStore) string {
 	if len(args) != 2 {
 		return "-ERR wrong number of arguments for 'LPOP' command\r\n"
 	}
@@ -106,12 +105,12 @@ func LPOPhandler(args []string, store map[string]*Value) string {
 		return "$-1\r\n"
 	}
 	if value.List.Size == 0 {
-		delete(store, args[1])
+		store.Delete(args[1])
 	}
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(val), val)
 }
 
-func LRANGEhandler(args []string, store map[string]*Value) string {
+func LRANGEhandler(args []string, store *ShardedStore) string {
 	if len(args) != 4 {
 		return "-ERR wrong number of arguments for 'LRANGE' command\r\n"
 	}
@@ -140,7 +139,7 @@ func LRANGEhandler(args []string, store map[string]*Value) string {
 	return result_string
 }
 
-func EXPIREhandler(args []string, store map[string]*Value) string {
+func EXPIREhandler(args []string, store *ShardedStore) string {
 	if len(args) != 3 {
 		return "-ERR wrong number of arguments for expire\r\n"
 	}
@@ -156,19 +155,19 @@ func EXPIREhandler(args []string, store map[string]*Value) string {
 	return ":1\r\n"
 }
 
-func getIfNotExpired(store map[string]*Value, key string) (*Value, bool) {
-	value, ok := store[key]
+func getIfNotExpired(store *ShardedStore, key string) (*Value, bool) {
+	value, ok := store.Get(key)
 	if !ok {
 		return nil, false
 	}
 	if !value.ExpiresAt.IsZero() && time.Now().After(value.ExpiresAt) {
-		delete(store, key)
+		store.Delete(key)
 		return nil, false
 	}
 	return value, true
 }
 
-func dispatch(args []string, store map[string]*Value) string {
+func dispatch(args []string, store *ShardedStore) string {
 	if len(args) == 0 {
 		return "-ERR you have entered nothing\r\n"
 	}
